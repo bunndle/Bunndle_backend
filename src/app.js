@@ -9,9 +9,10 @@ app.use(express.json());
 app.use(cookieParser());
 
 app.use(cors({
-  origin: "http://localhost:3000",
+  origin: true,   // reflects request origin
   credentials: true
 }));
+
 
 app.use("/api/user", userRouter);
 
