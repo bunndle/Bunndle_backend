@@ -6,7 +6,9 @@ import sendOTPEmail from "../utils/email.js"
 import  generateOTP  from "../utils/otp.js";
 import resetCookieOptions  from "../config/cookieOptions.js";
 import otpTemplate from "../utils/otpTemplate.js";
-
+import sendEmail from "../utils/email.js";
+import adminEmailTemplate from "../utils/adminEmailTemplate.js";
+import  userThankYouTemplate  from "../utils/userThankYou.js";
 
 
 export async function registerUser(req,res){
@@ -176,49 +178,33 @@ export const resetPassword = async (req, res) => {
 
 
 
-// export const resetPassword = async (req, res) => {
-//   try {
-//     const { newPassword } = req.body;
-//     const token = req.cookies.reset_token;
 
-//     if (!token) {
-//       return res.status(401).json({ message: "Session expired" });
-//     }
+export const quickConnect = async (req, res) => {
+  try {
+    const { name, phone, email, message } = req.body;
 
-//     const payload = jwt.verify(token, process.env.RESET_SECRET);
+    // 📩 Send email to admin
+    await sendEmail(
+      config.email,
+      "New Quick Connect Request",
+      adminEmailTemplate({ name, phone, email, message })
+    );
 
-//     if (payload.type !== "password_reset_verified") {
-//       return res.status(403).json({ message: "OTP not verified" });
-//     }
+    // 📧 Send confirmation to user
+    await sendEmail(
+      email,
+      "Thank you for choosing us",
+      userThankYouTemplate({ name })
+    );
 
-//     const hashedPassword = await bcrypt.hash(newPassword, 10);
+    res.status(200).json({
+      message: "Request submitted successfully. We will contact you soon.",
+      name,
+      email,
+      phone,
+    });
 
-//     const result = await userModel.updateOne(
-//       { email: payload.email }, // ✅ fetched from token
-//       {
-//         $set: { password: hashedPassword },
-//         $unset: {
-//           resetOtpHash: "",
-//           resetOtpExpiry: ""
-//         }
-//       }
-//     );
-//     console.log("RESET TOKEN PAYLOAD:", payload);
-
-
-//     if (result.matchedCount === 0) {
-//       return res.status(404).json({ message: "User not found" });
-//     }
-
-//     res
-//       .clearCookie("reset_token", {
-//         httpOnly: true,
-//         secure: true,
-//         sameSite: "strict"
-//       })
-//       .json({ message: "Password reset successful" });
-
-//   } catch (error) {
-//     return res.status(401).json({ message: "Invalid or expired token" });
-//   }
-// };
+  } catch (error) {
+    res.status(500).json({ message: "Internal server error" });
+  }
+};

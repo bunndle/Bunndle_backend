@@ -4,7 +4,8 @@ import {
   registerUser,
   loginUser, forgotPassword,
   verifyOtp, resetPassword, 
-  getUserProfile
+  getUserProfile,
+  quickConnect
 }from "../controllers/usercontroller.js";
 
 
@@ -17,6 +18,7 @@ router.get("/profile",authMiddleware,getUserProfile)
 router.post("/forgot-password", forgotPassword);
 router.post("/verify-otp", verifyOtp)
 router.post("/reset-password", resetPassword);
+router.post("/connect",quickConnect);
 
 
 
