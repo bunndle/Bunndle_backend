@@ -26,7 +26,7 @@ export async function registerUser(req,res){
     });
     await user.save();
 
-   const token = jwt.sign({ userId: user._id }, config.jwtSecret);
+   const token = jwt.sign({ id: user._id }, config.jwtSecret);
 
 
     res.status(201).json({ message: "User registered successfully" ,user,token});
@@ -50,7 +50,7 @@ export async function loginUser(req,res){
       return res.status(401).json({ message: "Invalid password" });
     }
 
-    const token = jwt.sign({ userId: user._id }, config.jwtSecret);
+    const token = jwt.sign({ id: user._id }, config.jwtSecret);
     res.status(200).json({ message: "User logged in successfully", token });
 }
 catch (error) {
@@ -61,13 +61,17 @@ catch (error) {
 
 
 
-export async function getUsers(req, res) {
-  try {
-    const users = await userModel.find();
-    res.status(200).json(users);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+export async function getUserProfile(req, res) {
+      try {
+
+        const token=req.headers.authorization.split(" ")[1];
+        const decoded = jwt.verify(token, config.jwtSecret);
+        const user = await userModel.findById(decoded.id);
+        res.status(200).json({ message: "User profile fetched successfully", id:user._id,name:user.name,phone:user.phone,email:user.email });
+        
+      } catch (error) {
+        return res.status(500).json({ error: error.message });
+      }
 }
 
 
@@ -89,7 +93,7 @@ export const forgotPassword = async (req, res) => {
   await user.save();
 
   const resetToken = jwt.sign(
-    { userId: user._id, type: "password_reset" },
+    {email: user.email, userId: user._id, type: "password_reset" },
     config.reset_scrt,
     { expiresIn: "10m" }
   );
@@ -158,6 +162,7 @@ export const resetPassword = async (req, res) => {
   }
 
   const user = await userModel.findById(payload.userId);
+
   user.password = await bcrypt.hash(newPassword, 10);
   user.resetOtpHash = undefined;
   user.resetOtpExpiry = undefined;
@@ -167,3 +172,53 @@ export const resetPassword = async (req, res) => {
     message: "Password reset successful"
   });
 };
+
+
+
+
+// export const resetPassword = async (req, res) => {
+//   try {
+//     const { newPassword } = req.body;
+//     const token = req.cookies.reset_token;
+
+//     if (!token) {
+//       return res.status(401).json({ message: "Session expired" });
+//     }
+
+//     const payload = jwt.verify(token, process.env.RESET_SECRET);
+
+//     if (payload.type !== "password_reset_verified") {
+//       return res.status(403).json({ message: "OTP not verified" });
+//     }
+
+//     const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+//     const result = await userModel.updateOne(
+//       { email: payload.email }, // ✅ fetched from token
+//       {
+//         $set: { password: hashedPassword },
+//         $unset: {
+//           resetOtpHash: "",
+//           resetOtpExpiry: ""
+//         }
+//       }
+//     );
+//     console.log("RESET TOKEN PAYLOAD:", payload);
+
+
+//     if (result.matchedCount === 0) {
+//       return res.status(404).json({ message: "User not found" });
+//     }
+
+//     res
+//       .clearCookie("reset_token", {
+//         httpOnly: true,
+//         secure: true,
+//         sameSite: "strict"
+//       })
+//       .json({ message: "Password reset successful" });
+
+//   } catch (error) {
+//     return res.status(401).json({ message: "Invalid or expired token" });
+//   }
+// };
