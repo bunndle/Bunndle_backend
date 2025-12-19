@@ -52,7 +52,7 @@ const userThankYouTemplate = ({ name }) => {
 
       <div class="footer">
         <p>Best regards,</p>
-        <p><strong>Bundel Team</strong></p>
+        <p><strong>Bunndel Team</strong></p>
       </div>
     </div>
   </body>

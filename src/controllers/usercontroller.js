@@ -2,13 +2,14 @@ import userModel from "../model/userModel.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import config from "../config/config.js";
+
 import sendOTPEmail from "../utils/email.js"
-import  generateOTP  from "../utils/otp.js";
+import generateOTP  from "../utils/otp.js";
 import resetCookieOptions  from "../config/cookieOptions.js";
 import otpTemplate from "../utils/otpTemplate.js";
 import sendEmail from "../utils/email.js";
 import adminEmailTemplate from "../utils/adminEmailTemplate.js";
-import  userThankYouTemplate  from "../utils/userThankYou.js";
+import userThankYouTemplate  from "../utils/userThankYou.js";
 
 
 export async function registerUser(req,res){

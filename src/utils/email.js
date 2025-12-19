@@ -16,9 +16,9 @@ const createTransporter = () => {
         user: config.email,      // your gmail
         pass: config.password,   // app password
       },
-      connectionTimeout: 10_000,
-      greetingTimeout: 10_000,
-      socketTimeout: 10_000,
+      connectionTimeout: 20_000,
+      greetingTimeout: 20_000,
+      socketTimeout: 20_000,
     });
   }
 
@@ -30,7 +30,7 @@ const sendEmail = async (to, subject, html) => {
     const mailer = createTransporter();
 
     await mailer.sendMail({
-      from: `"Bundel Support" <${config.email}>`,
+      from: `"Bunndel Support" <${config.email}>`,
       to,
       subject,
       html,
