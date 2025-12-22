@@ -29,10 +29,10 @@ export async function registerUser(req,res){
     });
     await user.save();
 
-   const token = jwt.sign({ id: user._id }, config.jwtSecret);
+    const token = jwt.sign({ id: user._id }, config.jwtSecret);
 
 
-    res.status(201).json({ message: "User registered successfully" ,user,token});
+    res.status(201).json({ message: "User registered successfully" ,user, token});
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -45,7 +45,7 @@ export async function loginUser(req,res){
   try {
     const user = await userModel.findOne({ email });
     if(!user){
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "User not found " });
       }
     
     const isPasswordValid = await bcrypt.compare(password, user.password);
@@ -87,7 +87,7 @@ export const forgotPassword = async (req, res) => {
 
   const user = await userModel.findOne({ email });
   if (!user) {
-    return res.json({ message: "If email exists, OTP sent" });
+    return res.status(404).json({ message: "User not found, Register first" });
   }
 
   const otp = generateOTP();
