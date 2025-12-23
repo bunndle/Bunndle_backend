@@ -11,7 +11,8 @@ import sendEmail from "../utils/email.js";
 import adminEmailTemplate from "../utils/adminEmailTemplate.js";
 import userThankYouTemplate  from "../utils/userThankYou.js";
 
-import crypto from "crypto";
+
+import { DEFAULT_OTP, hashOtp} from "../utils/otp_temp.js";
 
 
 export async function registerUser(req, res) {
@@ -257,120 +258,105 @@ export const quickConnect = async (req, res) => {
 
 
 
-// Mobile OTP Generation Function
+// Mobile OTP Generation F
 
-
-const OTP = "123456";
-
-const hashOtp = (otp) =>
-  crypto.createHash("sha256").update(otp).digest("hex");
 
 export const sendLoginOtp = async (req, res) => {
   try {
     const { phone } = req.body;
 
     if (!phone) {
-      return res.status(400).json({ message: "Phone number required" });
-    }
-
-    const user = await userModel.findOne({ phone });
-
-    // If user not found
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found. Please register first."
+      return res.status(400).json({
+        message: "Phone number required",
       });
     }
 
-    user.resetOtpHash = hashOtp(OTP);
-    user.resetOtpExpiry = Date.now() + 5 * 60 * 1000;
+    // 🔍 Check user existence
+    const user = await userModel.findOne({ phone });
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found. Please register first.",
+      });
+    }
+
+    // ✅ Set DEFAULT OTP
+    user.resetOtpHash = hashOtp(DEFAULT_OTP);
+    user.resetOtpExpiry = Date.now() + 5 * 60 * 1000; // 5 mins
 
     await user.save();
 
-    console.log("LOGIN OTP:", OTP); 
+    // 🔔 For now (DEV only)
+    console.log("LOGIN OTP:", DEFAULT_OTP);
 
-    res.json({
-      success: true,
-      message: "OTP sent successfully"
+    return res.status(200).json({
+      message: "OTP sent successfully",
     });
-  } catch (err) {
-    res.status(500).json({ message: "Server error" });
+
+  } catch (error) {
+    return res.status(500).json({
+      message: "Server error",
+    });
   }
 };
-
-
-
-
-
 export const verifyLoginOtp = async (req, res) => {
   try {
     const { phone, otp } = req.body;
 
     if (!phone || !otp) {
       return res.status(400).json({
-        message: "Phone & OTP required"
+        message: "Phone and OTP required",
       });
     }
 
-    const user = await userModel.findOne({ phone });
+    // 🔴 IMPORTANT FIX IS HERE
+    const user = await userModel.findOne({ phone })
+      .select("+resetOtpHash +resetOtpExpiry");
 
     if (!user) {
       return res.status(404).json({
-        message: "User not found"
+        message: "User not found",
       });
     }
 
-    // OTP never requested or already used
     if (!user.resetOtpHash || !user.resetOtpExpiry) {
       return res.status(400).json({
-        message: "OTP not requested or session expired. Please request OTP again."
+        message: "OTP not requested or session expired",
       });
     }
 
-    // OTP expired
-    if (user.resetOtpExpiry < Date.now()) {
+    if (user.resetOtpExpiry.getTime() < Date.now()) {
       return res.status(400).json({
-        message: "Session expired. Please request OTP again."
+        message: "Session expired",
       });
     }
 
-    // OTP mismatch
     if (user.resetOtpHash !== hashOtp(otp)) {
       return res.status(400).json({
-        message: "Invalid OTP"
+        message: "Invalid OTP",
       });
     }
 
-    // clear OTP after success
+    // ✅ clear OTP after success
     user.resetOtpHash = undefined;
     user.resetOtpExpiry = undefined;
     await user.save();
 
     const token = jwt.sign(
-      { userId: user._id },
+      { id: user._id },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );
 
-    res.json({
-      success: true,
+    return res.status(200).json({
       message: "Login successful",
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        phone: user.phone,
-        email: user.email
-      }
     });
+
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({
+      message: "Server error",
+    });
   }
 };
-
-
-
-
-
