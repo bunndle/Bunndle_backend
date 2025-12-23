@@ -24,40 +24,33 @@ export async function registerUser(req, res) {
       });
     }
 
-    // 🔍 Check if email or phone already exists
+    // 🔍 Check email or phone already exists
     const existingUser = await userModel.findOne({
       $or: [{ email }, { phone }],
     });
 
     if (existingUser) {
-      if (existingUser.email === email) {
-        return res.status(409).json({
-          message: "Email already registered",
-        });
-      }
-
-      if (existingUser.phone === phone) {
-        return res.status(409).json({
-          message: "Phone number already registered",
-        });
-      }
+      return res.status(409).json({
+        message:
+          existingUser.email === email
+            ? "Email already registered"
+            : "Phone number already registered",
+      });
     }
 
     // 🔐 Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = new userModel({
-      name,
+    await userModel.create({
+      name,           // ✅ duplicate allowed
       phone,
       email,
       password: hashedPassword,
     });
 
-    await user.save();
-
     // 🎟️ Generate JWT
     const token = jwt.sign(
-      { id: user._id },
+      { id: email },
       config.jwtSecret,
       { expiresIn: "1d" }
     );
@@ -65,18 +58,19 @@ export async function registerUser(req, res) {
     return res.status(201).json({
       message: "User registered successfully",
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-      },
     });
 
   } catch (error) {
+    // ✅ Handle Mongo duplicate key error safely
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyValue)[0];
+      return res.status(409).json({
+        message: `${field} already exists`,
+      });
+    }
+
     return res.status(500).json({
       message: "Internal server error",
-      error: error.message,
     });
   }
 }
@@ -305,56 +299,6 @@ export const sendLoginOtp = async (req, res) => {
   }
 };
 
-
-
-
-// export const verifyLoginOtp = async (req, res) => {
-//   try {
-//     const { phone, otp } = req.body;
-//     console.log(req.body);
-
-//     if (!phone || !otp) {
-//       return res.status(400).json({ message: "Phone & OTP required" });
-//     }
-
-//     const user = await userModel.findOne({ phone });
-
-//     if (!user) {
-//       return res.status(404).json({ message: "User not found" });
-//     }
-
-//     if (
-//       user.resetOtpHash !== hashOtp(otp) ||
-//       user.resetOtpExpiry < Date.now()
-//     ) {
-//       return res.status(400).json({ message: "Invalid or expired OTP" });
-//     }
-
-//     // clear OTP
-//     user.resetOtpHash = undefined;
-//     user.resetOtpExpiry = undefined;
-//     await user.save();
-
-//     const token = jwt.sign(
-//       { userId: user._id },
-//       process.env.JWT_SECRET,
-//       { expiresIn: "1d" }
-//     );
-
-//     res.json({
-//       success: true,
-//       message: "Login successful",
-//       token,
-//       user: {
-//         id: user._id,
-//         name: user.name,
-//         phone: user.phone
-//       }
-//     });
-//   } catch (err) {
-//     res.status(500).json({ message: "Server error" });
-//   }
-// };
 
 
 
