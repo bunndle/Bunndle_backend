@@ -11,14 +11,39 @@ import sendEmail from "../utils/email.js";
 import adminEmailTemplate from "../utils/adminEmailTemplate.js";
 import userThankYouTemplate  from "../utils/userThankYou.js";
 
+import crypto from "crypto";
 
-export async function registerUser(req,res){
+
+export async function registerUser(req, res) {
   try {
     const { name, phone, email, password } = req.body;
-    if(!name || !phone || !email || !password){
-      return res.status(400).json({message:"All fields are required"})
+
+    if (!name || !phone || !email || !password) {
+      return res.status(400).json({
+        message: "Name, phone, email and password are required",
+      });
     }
 
+    // 🔍 Check if email or phone already exists
+    const existingUser = await userModel.findOne({
+      $or: [{ email }, { phone }],
+    });
+
+    if (existingUser) {
+      if (existingUser.email === email) {
+        return res.status(409).json({
+          message: "Email already registered",
+        });
+      }
+
+      if (existingUser.phone === phone) {
+        return res.status(409).json({
+          message: "Phone number already registered",
+        });
+      }
+    }
+
+    // 🔐 Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = new userModel({
@@ -27,16 +52,34 @@ export async function registerUser(req,res){
       email,
       password: hashedPassword,
     });
+
     await user.save();
 
-    const token = jwt.sign({ id: user._id }, config.jwtSecret);
+    // 🎟️ Generate JWT
+    const token = jwt.sign(
+      { id: user._id },
+      config.jwtSecret,
+      { expiresIn: "1d" }
+    );
 
+    return res.status(201).json({
+      message: "User registered successfully",
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+      },
+    });
 
-    res.status(201).json({ message: "User registered successfully" ,user, token});
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
   }
-};
+}
 
 
 export async function loginUser(req,res){
@@ -184,6 +227,11 @@ export const quickConnect = async (req, res) => {
   try {
     const { name, phone, email, message } = req.body;
 
+    if (!name || !phone || !email || !message) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+
     // 📩 Send email to admin
     await sendEmail(
       config.email,
@@ -209,3 +257,176 @@ export const quickConnect = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
+
+
+
+
+
+// Mobile OTP Generation Function
+
+
+const OTP = "123456";
+
+const hashOtp = (otp) =>
+  crypto.createHash("sha256").update(otp).digest("hex");
+
+export const sendLoginOtp = async (req, res) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({ message: "Phone number required" });
+    }
+
+    const user = await userModel.findOne({ phone });
+
+    // If user not found
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found. Please register first."
+      });
+    }
+
+    user.resetOtpHash = hashOtp(OTP);
+    user.resetOtpExpiry = Date.now() + 5 * 60 * 1000;
+
+    await user.save();
+
+    console.log("LOGIN OTP:", OTP); 
+
+    res.json({
+      success: true,
+      message: "OTP sent successfully"
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+
+
+// export const verifyLoginOtp = async (req, res) => {
+//   try {
+//     const { phone, otp } = req.body;
+//     console.log(req.body);
+
+//     if (!phone || !otp) {
+//       return res.status(400).json({ message: "Phone & OTP required" });
+//     }
+
+//     const user = await userModel.findOne({ phone });
+
+//     if (!user) {
+//       return res.status(404).json({ message: "User not found" });
+//     }
+
+//     if (
+//       user.resetOtpHash !== hashOtp(otp) ||
+//       user.resetOtpExpiry < Date.now()
+//     ) {
+//       return res.status(400).json({ message: "Invalid or expired OTP" });
+//     }
+
+//     // clear OTP
+//     user.resetOtpHash = undefined;
+//     user.resetOtpExpiry = undefined;
+//     await user.save();
+
+//     const token = jwt.sign(
+//       { userId: user._id },
+//       process.env.JWT_SECRET,
+//       { expiresIn: "1d" }
+//     );
+
+//     res.json({
+//       success: true,
+//       message: "Login successful",
+//       token,
+//       user: {
+//         id: user._id,
+//         name: user.name,
+//         phone: user.phone
+//       }
+//     });
+//   } catch (err) {
+//     res.status(500).json({ message: "Server error" });
+//   }
+// };
+
+
+
+
+export const verifyLoginOtp = async (req, res) => {
+  try {
+    const { phone, otp } = req.body;
+
+    if (!phone || !otp) {
+      return res.status(400).json({
+        message: "Phone & OTP required"
+      });
+    }
+
+    const user = await userModel.findOne({ phone });
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found"
+      });
+    }
+
+    // OTP never requested or already used
+    if (!user.resetOtpHash || !user.resetOtpExpiry) {
+      return res.status(400).json({
+        message: "OTP not requested or session expired. Please request OTP again."
+      });
+    }
+
+    // OTP expired
+    if (user.resetOtpExpiry < Date.now()) {
+      return res.status(400).json({
+        message: "Session expired. Please request OTP again."
+      });
+    }
+
+    // OTP mismatch
+    if (user.resetOtpHash !== hashOtp(otp)) {
+      return res.status(400).json({
+        message: "Invalid OTP"
+      });
+    }
+
+    // clear OTP after success
+    user.resetOtpHash = undefined;
+    user.resetOtpExpiry = undefined;
+    await user.save();
+
+    const token = jwt.sign(
+      { userId: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: "1d" }
+    );
+
+    res.json({
+      success: true,
+      message: "Login successful",
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        phone: user.phone,
+        email: user.email
+      }
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+
+
+
