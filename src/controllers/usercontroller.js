@@ -77,29 +77,62 @@ export async function registerUser(req, res) {
 }
 
 
-export async function loginUser(req,res){
-  const { email, password } = req.body;
-
+export async function loginUser(req, res) {
   try {
-    const user = await userModel.findOne({ email });
-    if(!user){
-      return res.status(404).json({ message: "User not found " });
-      }
-    
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if(!isPasswordValid){
-      return res.status(401).json({ message: "Invalid password" });
+    const { email, password } = req.body;
+
+    // 1️⃣ Validate input
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required",
+      });
     }
 
-    const token = jwt.sign({ id: user._id }, config.jwtSecret);
-    res.status(200).json({ message: "User logged in successfully", token });
-}
-catch (error) {
-  res.status(500).json({ error: error.message });
+    // 2️⃣ Explicitly SELECT password
+    const user = await userModel
+      .findOne({ email })
+      .select("+password");
 
-}
-}
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password",
+      });
+    }
 
+    // 3️⃣ Compare password
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password",
+      });
+    }
+
+    // 4️⃣ Generate token
+    const token = jwt.sign(
+      { id: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: "24h" }
+    );
+
+    // 5️⃣ Send response
+    return res.status(200).json({
+      success: true,
+      message: "Login successful",
+      token,
+    });
+
+  } catch (error) {
+    console.error("Login error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+}
 
 
 export async function getUserProfile(req, res) {
@@ -115,6 +148,73 @@ export async function getUserProfile(req, res) {
       }
 }
 
+
+
+
+
+export async function updateUserProfile(req, res) {
+  try {
+    
+    const user = req.user;
+    const { name, email, phone } = req.body || {};
+
+    //Validate input
+    if (!name && !email && !phone) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one field (name, email, phone) is required",
+      });
+    }
+
+    // Build update object safely
+    const updateData = {};
+    if (name) updateData.name = name;
+    if (email) updateData.email = email;
+    if (phone) updateData.phone = phone;
+
+    // 🚀 Single DB write (NO extra reads)
+    const updatedUser = await userModel.findByIdAndUpdate(
+      user._id,
+      updateData,
+      {
+        new: true,
+        runValidators: true,
+      }
+    ).select("-password");
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      data: updatedUser,
+    });
+
+  } catch (error) {
+
+    // 🔐 Duplicate key error handling
+    if (error.code === 11000) {
+
+      if (error.keyPattern?.phone) {
+        return res.status(409).json({
+          success: false,
+          message: "This phone number is already linked with another account",
+        });
+      }
+
+      if (error.keyPattern?.email) {
+        return res.status(409).json({
+          success: false,
+          message: "This email is already linked with another account",
+        });
+      }
+    }
+
+    console.error("Update profile error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+}
 
 
 /**
@@ -258,7 +358,7 @@ export const quickConnect = async (req, res) => {
 
 
 
-// Mobile OTP Generation F
+// Mobile OTP Generation and verify Functions----------------------------------
 
 
 export const sendLoginOtp = async (req, res) => {
@@ -309,7 +409,7 @@ export const verifyLoginOtp = async (req, res) => {
       });
     }
 
-    // 🔴 IMPORTANT FIX IS HERE
+    
     const user = await userModel.findOne({ phone })
       .select("+resetOtpHash +resetOtpExpiry");
 

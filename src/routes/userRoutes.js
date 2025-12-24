@@ -9,7 +9,8 @@ import {
   getUserProfile,
   quickConnect,
   sendLoginOtp,
-  verifyLoginOtp
+  verifyLoginOtp,
+  updateUserProfile
 }from "../controllers/usercontroller.js";
 
 
@@ -19,10 +20,13 @@ const router = express.Router();
 router.post("/register", registerUser);
 router.post("/login", loginUser);
 router.get("/profile", authMiddleware, getUserProfile)
+router.put("/edit-profile", authMiddleware, updateUserProfile);
+
 router.post("/forgot-password", forgotPassword);
 router.post("/verify-otp", verifyOtp)
 router.post("/reset-password", resetPassword);
 router.post("/connect",authMiddleware,quickConnect);
+
 
 
 
