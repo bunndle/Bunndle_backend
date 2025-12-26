@@ -5,13 +5,13 @@ const userSchema = new mongoose.Schema(
     name: {
       type: String,
       required: true,
-      trim: true,              // ✅ duplicate allowed
+      trim: true, // ✅ duplicate allowed
     },
 
     phone: {
       type: String,
       required: true,
-      unique: true,            // ✅ must be unique
+      unique: true, // ✅ must be unique
       index: true,
       trim: true,
     },
@@ -19,7 +19,7 @@ const userSchema = new mongoose.Schema(
     email: {
       type: String,
       required: true,
-      unique: true,            // ✅ must be unique
+      unique: true, // ✅ must be unique
       lowercase: true,
       trim: true,
       index: true,
@@ -28,19 +28,27 @@ const userSchema = new mongoose.Schema(
     password: {
       type: String,
       required: true,
-      select: false,           // 🔒 never return password by default
+      select: false, // 🔒 never return password by default
+    },
+    dob: {
+      type: Date, // ✅ DOB field
+    },
+    profileImage: {
+      type: String,
+    },
+    profileImageId: {
+      type: String, // ImageKit fileId (for delete/replace later)
     },
 
     // 🔐 Forgot / Reset password support
     resetOtpHash: {
       type: String,
-      select: false,           // 🔒 hide from queries
+      select: false, // 🔒 hide from queries
     },
 
     resetOtpExpiry: {
       type: Date,
     },
-
   },
   { timestamps: true }
 );

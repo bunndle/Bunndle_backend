@@ -13,6 +13,7 @@ import {
   updateUserProfile
 }from "../controllers/usercontroller.js";
 
+import { uploadProfileImage } from "../middleware/upload.js";
 
 
 const router = express.Router();
@@ -20,15 +21,12 @@ const router = express.Router();
 router.post("/register", registerUser);
 router.post("/login", loginUser);
 router.get("/profile", authMiddleware, getUserProfile)
-router.put("/edit-profile", authMiddleware, updateUserProfile);
+router.put("/edit-profile", authMiddleware, uploadProfileImage.single("profileImage"), updateUserProfile);
 
 router.post("/forgot-password", forgotPassword);
 router.post("/verify-otp", verifyOtp)
 router.post("/reset-password", resetPassword);
 router.post("/connect",authMiddleware,quickConnect);
-
-
-
 
 router.post("/send-otp", sendLoginOtp);
 router.post("/verify-mobile-otp", verifyLoginOtp);

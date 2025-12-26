@@ -3,16 +3,26 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import config from "../config/config.js";
 
-import sendOTPEmail from "../utils/email.js"
-import generateOTP  from "../utils/otp.js";
-import resetCookieOptions  from "../config/cookieOptions.js";
+import sendOTPEmail from "../utils/email.js";
+import generateOTP from "../utils/otp.js";
+import resetCookieOptions from "../config/cookieOptions.js";
 import otpTemplate from "../utils/otpTemplate.js";
 import sendEmail from "../utils/email.js";
 import adminEmailTemplate from "../utils/adminEmailTemplate.js";
-import userThankYouTemplate  from "../utils/userThankYou.js";
+import userThankYouTemplate from "../utils/userThankYou.js";
+
+import { uploadFile, deleteFile } from "../services/imageStorageService.js";
+import { DEFAULT_OTP, hashOtp } from "../utils/otp_temp.js";
 
 
-import { DEFAULT_OTP, hashOtp} from "../utils/otp_temp.js";
+
+const formatDob = (dob) => {
+  if (!dob) return null;
+  return new Date(dob)
+    .toISOString()
+    .replace("T", " ")
+    .replace(".000Z", "");
+};
 
 
 export async function registerUser(req, res) {
@@ -43,24 +53,21 @@ export async function registerUser(req, res) {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     await userModel.create({
-      name,           // ✅ duplicate allowed
+      name, // ✅ duplicate allowed
       phone,
       email,
       password: hashedPassword,
     });
 
     // 🎟️ Generate JWT
-    const token = jwt.sign(
-      { id: email },
-      config.jwtSecret,
-      { expiresIn: "1d" }
-    );
+    const token = jwt.sign({ id: email }, config.jwtSecret, {
+      expiresIn: "1d",
+    });
 
     return res.status(201).json({
       message: "User registered successfully",
       token,
     });
-
   } catch (error) {
     // ✅ Handle Mongo duplicate key error safely
     if (error.code === 11000) {
@@ -76,7 +83,6 @@ export async function registerUser(req, res) {
   }
 }
 
-
 export async function loginUser(req, res) {
   try {
     const { email, password } = req.body;
@@ -90,9 +96,7 @@ export async function loginUser(req, res) {
     }
 
     // 2️⃣ Explicitly SELECT password
-    const user = await userModel
-      .findOne({ email })
-      .select("+password");
+    const user = await userModel.findOne({ email }).select("+password");
 
     if (!user) {
       return res.status(401).json({
@@ -112,11 +116,9 @@ export async function loginUser(req, res) {
     }
 
     // 4️⃣ Generate token
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "24h" }
-    );
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "24h",
+    });
 
     // 5️⃣ Send response
     return res.status(200).json({
@@ -124,7 +126,6 @@ export async function loginUser(req, res) {
       message: "Login successful",
       token,
     });
-
   } catch (error) {
     console.error("Login error:", error);
     return res.status(500).json({
@@ -134,78 +135,85 @@ export async function loginUser(req, res) {
   }
 }
 
-
 export async function getUserProfile(req, res) {
-      try {
-
-        const token=req.headers.authorization.split(" ")[1];
-        const decoded = jwt.verify(token, config.jwtSecret);
-        const user = await userModel.findById(decoded.id);
-        res.status(200).json({ message: "User profile fetched successfully", id:user._id,name:user.name,phone:user.phone,email:user.email });
-        
-      } catch (error) {
-        return res.status(500).json({ error: error.message });
-      }
+  try {
+    const token = req.headers.authorization.split(" ")[1];
+    const decoded = jwt.verify(token, config.jwtSecret);
+    const user = await userModel.findById(decoded.id);
+    res
+      .status(200)
+      .json({
+        message: "User profile fetched successfully",
+        id: user._id,
+        name: user.name,
+        phone: user.phone,
+        email: user.email,
+      });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
 }
-
-
-
-
 
 export async function updateUserProfile(req, res) {
   try {
-    
     const user = req.user;
-    const { name, email, phone } = req.body || {};
+    const { name, email, phone, dob } = req.body || {};
 
-    //Validate input
-    if (!name && !email && !phone) {
+    if (!name && !email && !phone && !dob && !req.file) {
       return res.status(400).json({
         success: false,
-        message: "At least one field (name, email, phone) is required",
+        message: "No fields provided to update",
       });
     }
 
-    // Build update object safely
+    // 🔎 Get existing user (for old imageId)
+    const existingUser = await userModel.findById(user._id);
+
     const updateData = {};
     if (name) updateData.name = name;
     if (email) updateData.email = email;
     if (phone) updateData.phone = phone;
+    if (dob) updateData.dob = new Date(dob);
 
-    // 🚀 Single DB write (NO extra reads)
-    const updatedUser = await userModel.findByIdAndUpdate(
-      user._id,
-      updateData,
-      {
+    let oldImageId = existingUser?.profileImageId;
+
+    // 🖼 Upload new image first
+    if (req.file) {
+      const uploadedImage = await uploadFile(req.file);
+      updateData.profileImage = uploadedImage.url;
+      updateData.profileImageId = uploadedImage.fileId;
+    }
+
+    const updatedUser = await userModel
+      .findByIdAndUpdate(user._id, updateData, {
         new: true,
         runValidators: true,
-      }
-    ).select("-password");
+      })
+      .select("-password");
 
-    return res.status(200).json({
+    // ✅ Respond SUCCESS immediately
+    res.status(200).json({
       success: true,
       message: "Profile updated successfully",
-      data: updatedUser,
+      data: {
+        name: updatedUser.name,
+        email: updatedUser.email,
+        phone: updatedUser.phone,
+        dob: formatDob(updatedUser.dob),
+        profileImage: updatedUser.profileImage,
+      },
     });
 
+    // 🧹 Delete old image AFTER response
+    if (oldImageId && req.file) {
+      deleteFile(oldImageId); // 🔥 async, non-blocking
+    }
   } catch (error) {
-
-    // 🔐 Duplicate key error handling
     if (error.code === 11000) {
-
-      if (error.keyPattern?.phone) {
-        return res.status(409).json({
-          success: false,
-          message: "This phone number is already linked with another account",
-        });
-      }
-
-      if (error.keyPattern?.email) {
-        return res.status(409).json({
-          success: false,
-          message: "This email is already linked with another account",
-        });
-      }
+      return res.status(409).json({
+        success: false,
+        message: "Duplicate email or phone",
+      });
     }
 
     console.error("Update profile error:", error);
@@ -215,7 +223,6 @@ export async function updateUserProfile(req, res) {
     });
   }
 }
-
 
 /**
  * STEP 1️⃣ Forgot Password
@@ -234,12 +241,12 @@ export const forgotPassword = async (req, res) => {
   await user.save();
 
   const resetToken = jwt.sign(
-    {email: user.email, userId: user._id, type: "password_reset" },
+    { email: user.email, userId: user._id, type: "password_reset" },
     config.reset_scrt,
     { expiresIn: "10m" }
   );
 
-  await sendOTPEmail(email,"Your Password Reset OTP",  otpTemplate(otp));
+  await sendOTPEmail(email, "Your Password Reset OTP", otpTemplate(otp));
 
   res
     .cookie("reset_token", resetToken, {
@@ -252,40 +259,74 @@ export const forgotPassword = async (req, res) => {
 /**
  * STEP 2️⃣ Verify OTP
  */
+
 export const verifyOtp = async (req, res) => {
-  const { otp } = req.body;
-  const token = req.cookies.reset_token;
-  console.log(token)
+  try {
+    const { otp } = req.body;
+    const token = req.cookies.reset_token;
 
-  if (!token) return res.status(401).json({ message: "Session expired" });
+    if (!otp) {
+      return res.status(400).json({ message: "OTP is required" });
+    }
 
-  const payload = jwt.verify(token, process.env.RESET_SECRET);
-  if (payload.type !== "password_reset") {
-    return res.status(403).json({ message: "Invalid token" });
+    if (!token) {
+      return res.status(401).json({ message: "Session expired" });
+    }
+
+    const payload = jwt.verify(token, process.env.RESET_SECRET);
+
+    if (payload.type !== "password_reset") {
+      return res.status(403).json({ message: "Invalid token" });
+    }
+
+    // 🔑 IMPORTANT: explicitly select resetOtpHash
+    const user = await userModel
+      .findById(payload.userId)
+      .select("+resetOtpHash");
+
+    if (!user || !user.resetOtpHash) {
+      return res.status(400).json({ message: "OTP expired or invalid" });
+    }
+
+    if (user.resetOtpExpiry < Date.now()) {
+      return res.status(400).json({ message: "OTP expired" });
+    }
+
+    const isValidOtp = await bcrypt.compare(
+      String(otp),
+      user.resetOtpHash
+    );
+
+    if (!isValidOtp) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    // ✅ clear OTP after successful verification
+    user.resetOtpHash = undefined;
+    user.resetOtpExpiry = undefined;
+    await user.save();
+
+    // 🔐 issue verified reset token
+    const verifiedToken = jwt.sign(
+      { userId: user._id, type: "password_reset_verified" },
+      process.env.RESET_SECRET,
+      { expiresIn: "5m" }
+    );
+
+    res
+      .cookie("reset_token", verifiedToken, {
+        ...resetCookieOptions,
+        maxAge: 5 * 60 * 1000,
+      })
+      .json({ message: "OTP verified" });
+
+  } catch (error) {
+    console.error("Verify OTP error:", error);
+
+    return res.status(401).json({
+      message: "Invalid or expired token",
+    });
   }
-
-  const user = await userModel.findById(payload.userId);
-  const valid =
-    user &&
-    user.resetOtpExpiry > Date.now() &&
-    (await bcrypt.compare(otp, user.resetOtpHash));
-
-  if (!valid) {
-    return res.status(400).json({ message: "Invalid or expired OTP" });
-  }
-
-  const verifiedToken = jwt.sign(
-    { userId: user._id, type: "password_reset_verified" },
-    process.env.RESET_SECRET,
-    { expiresIn: "5m" }
-  );
-
-  res
-    .cookie("reset_token", verifiedToken, {
-      ...resetCookieOptions,
-      maxAge: 5 * 60 * 1000,
-    })
-    .json({ message: "OTP verified" });
 };
 
 /**
@@ -310,13 +351,9 @@ export const resetPassword = async (req, res) => {
   await user.save();
 
   res.clearCookie("reset_token").json({
-    message: "Password reset successful"
+    message: "Password reset successful",
   });
 };
-
-
-
-
 
 export const quickConnect = async (req, res) => {
   try {
@@ -325,7 +362,6 @@ export const quickConnect = async (req, res) => {
     if (!name || !phone || !email || !message) {
       return res.status(400).json({ message: "All fields are required" });
     }
-
 
     // 📩 Send email to admin
     await sendEmail(
@@ -347,19 +383,12 @@ export const quickConnect = async (req, res) => {
       email,
       phone,
     });
-
   } catch (error) {
     res.status(500).json({ message: "Internal server error" });
   }
 };
 
-
-
-
-
-
 // Mobile OTP Generation and verify Functions----------------------------------
-
 
 export const sendLoginOtp = async (req, res) => {
   try {
@@ -392,7 +421,6 @@ export const sendLoginOtp = async (req, res) => {
     return res.status(200).json({
       message: "OTP sent successfully",
     });
-
   } catch (error) {
     return res.status(500).json({
       message: "Server error",
@@ -409,8 +437,8 @@ export const verifyLoginOtp = async (req, res) => {
       });
     }
 
-    
-    const user = await userModel.findOne({ phone })
+    const user = await userModel
+      .findOne({ phone })
       .select("+resetOtpHash +resetOtpExpiry");
 
     if (!user) {
@@ -442,17 +470,14 @@ export const verifyLoginOtp = async (req, res) => {
     user.resetOtpExpiry = undefined;
     await user.save();
 
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "1d" }
-    );
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "1d",
+    });
 
     return res.status(200).json({
       message: "Login successful",
       token,
     });
-
   } catch (error) {
     console.error(error);
     return res.status(500).json({
