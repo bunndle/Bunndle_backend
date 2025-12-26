@@ -14,6 +14,7 @@ import {
 }from "../controllers/usercontroller.js";
 
 import { uploadProfileImage } from "../middleware/upload.js";
+import { verifyResetToken, verifyVerifiedResetToken } from "../middleware/resetToken.middleware.js";
 
 
 const router = express.Router();
@@ -24,8 +25,19 @@ router.get("/profile", authMiddleware, getUserProfile)
 router.put("/edit-profile", authMiddleware, uploadProfileImage.single("profileImage"), updateUserProfile);
 
 router.post("/forgot-password", forgotPassword);
-router.post("/verify-otp", verifyOtp)
-router.post("/reset-password", resetPassword);
+//router.post("/verify-otp", verifyOtp)
+router.post(
+  "/verify-otp",
+  verifyResetToken,
+  verifyOtp
+);
+
+router.post(
+  "/reset-password",
+  verifyVerifiedResetToken,
+  resetPassword
+);
+
 router.post("/connect",authMiddleware,quickConnect);
 
 router.post("/send-otp", sendLoginOtp);

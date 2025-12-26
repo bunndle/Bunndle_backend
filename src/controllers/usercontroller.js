@@ -14,16 +14,10 @@ import userThankYouTemplate from "../utils/userThankYou.js";
 import { uploadFile, deleteFile } from "../services/imageStorageService.js";
 import { DEFAULT_OTP, hashOtp } from "../utils/otp_temp.js";
 
-
-
 const formatDob = (dob) => {
   if (!dob) return null;
-  return new Date(dob)
-    .toISOString()
-    .replace("T", " ")
-    .replace(".000Z", "");
+  return new Date(dob).toISOString().replace("T", " ").replace(".000Z", "");
 };
-
 
 export async function registerUser(req, res) {
   try {
@@ -140,15 +134,13 @@ export async function getUserProfile(req, res) {
     const token = req.headers.authorization.split(" ")[1];
     const decoded = jwt.verify(token, config.jwtSecret);
     const user = await userModel.findById(decoded.id);
-    res
-      .status(200)
-      .json({
-        message: "User profile fetched successfully",
-        id: user._id,
-        name: user.name,
-        phone: user.phone,
-        email: user.email,
-      });
+    res.status(200).json({
+      message: "User profile fetched successfully",
+      id: user._id,
+      name: user.name,
+      phone: user.phone,
+      email: user.email,
+    });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
@@ -228,133 +220,161 @@ export async function updateUserProfile(req, res) {
  * STEP 1️⃣ Forgot Password
  */
 export const forgotPassword = async (req, res) => {
-  const { email } = req.body;
-
-  const user = await userModel.findOne({ email });
-  if (!user) {
-    return res.status(404).json({ message: "User not found, Register first" });
-  }
-
-  const otp = generateOTP();
-  user.resetOtpHash = await bcrypt.hash(otp, 10);
-  user.resetOtpExpiry = Date.now() + 10 * 60 * 1000;
-  await user.save();
-
-  const resetToken = jwt.sign(
-    { email: user.email, userId: user._id, type: "password_reset" },
-    config.reset_scrt,
-    { expiresIn: "10m" }
-  );
-
-  await sendOTPEmail(email, "Your Password Reset OTP", otpTemplate(otp));
-
-  res
-    .cookie("reset_token", resetToken, {
-      ...resetCookieOptions,
-      maxAge: 10 * 60 * 1000,
-    })
-    .json({ message: "OTP sent to email" });
-};
-
-/**
- * STEP 2️⃣ Verify OTP
- */
-
-export const verifyOtp = async (req, res) => {
   try {
-    const { otp } = req.body;
-    const token = req.cookies.reset_token;
+    const { email } = req.body;
 
-    if (!otp) {
-      return res.status(400).json({ message: "OTP is required" });
+    // 1️⃣ Validate input
+    if (!email) {
+      return res.status(400).json({
+        message: "Email is required",
+      });
     }
 
-    if (!token) {
-      return res.status(401).json({ message: "Session expired" });
+    // 2️⃣ Check user exists
+    const user = await userModel.findOne({ email });
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found, please register first",
+      });
     }
 
-    const payload = jwt.verify(token, process.env.RESET_SECRET);
+    // 3️⃣ Generate OTP
+    const otp = generateOTP();
 
-    if (payload.type !== "password_reset") {
-      return res.status(403).json({ message: "Invalid token" });
-    }
-
-    // 🔑 IMPORTANT: explicitly select resetOtpHash
-    const user = await userModel
-      .findById(payload.userId)
-      .select("+resetOtpHash");
-
-    if (!user || !user.resetOtpHash) {
-      return res.status(400).json({ message: "OTP expired or invalid" });
-    }
-
-    if (user.resetOtpExpiry < Date.now()) {
-      return res.status(400).json({ message: "OTP expired" });
-    }
-
-    const isValidOtp = await bcrypt.compare(
-      String(otp),
-      user.resetOtpHash
-    );
-
-    if (!isValidOtp) {
-      return res.status(400).json({ message: "Invalid or expired OTP" });
-    }
-
-    // ✅ clear OTP after successful verification
-    user.resetOtpHash = undefined;
-    user.resetOtpExpiry = undefined;
+    // 4️⃣ Save hashed OTP with expiry
+    user.resetOtpHash = await bcrypt.hash(String(otp), 10);
+    user.resetOtpExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes
     await user.save();
 
-    // 🔐 issue verified reset token
-    const verifiedToken = jwt.sign(
-      { userId: user._id, type: "password_reset_verified" },
-      process.env.RESET_SECRET,
-      { expiresIn: "5m" }
+    // 5️⃣ Generate reset session token
+    const resetToken = jwt.sign(
+      {
+        userId: user._id,
+        type: "password_reset",
+      },
+      config.reset_scrt,
+      { expiresIn: "10m" }
     );
 
-    res
-      .cookie("reset_token", verifiedToken, {
-        ...resetCookieOptions,
-        maxAge: 5 * 60 * 1000,
-      })
-      .json({ message: "OTP verified" });
+    // 6️⃣ Send OTP email
+    await sendOTPEmail(user.email, "Your Password Reset OTP", otpTemplate(otp));
 
+    // 7️⃣ Respond (NO cookies)
+    return res.status(200).json({
+    
+      message: "OTP sent to registered email",
+      resetToken, // Flutter stores this in memory
+    });
   } catch (error) {
-    console.error("Verify OTP error:", error);
+    console.error("Forgot password error:", error);
 
-    return res.status(401).json({
-      message: "Invalid or expired token",
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
     });
   }
 };
 
-/**
- * STEP 3️⃣ Reset Password
- */
-export const resetPassword = async (req, res) => {
-  const { newPassword } = req.body;
-  const token = req.cookies.reset_token;
+export const verifyOtp = async (req, res) => {
+  try {
+    const { otp } = req.body;
+    const { userId } = req.resetSession;
 
-  if (!token) return res.status(401).json({ message: "Session expired" });
+    // 1️⃣ Validate input
+    if (!otp) {
+      return res.status(400).json({
+        message: "OTP is required",
+      });
+    }
 
-  const payload = jwt.verify(token, process.env.RESET_SECRET);
-  if (payload.type !== "password_reset_verified") {
-    return res.status(403).json({ message: "OTP not verified" });
+    // 2️⃣ Fetch user with OTP hash
+    const user = await userModel
+      .findById(userId)
+      .select("+resetOtpHash +resetOtpExpiry");
+
+    if (!user || !user.resetOtpHash) {
+      return res.status(400).json({
+        message: "OTP expired or invalid",
+      });
+    }
+
+    // 3️⃣ Check expiry
+    if (user.resetOtpExpiry < Date.now()) {
+      return res.status(400).json({
+        message: "OTP expired",
+      });
+    }
+
+    // 4️⃣ Compare OTP
+    const isValidOtp = await bcrypt.compare(String(otp), user.resetOtpHash);
+
+    if (!isValidOtp) {
+      return res.status(400).json({
+        message: "Invalid OTP",
+      });
+    }
+
+    // 5️⃣ Clear OTP after success
+    user.resetOtpHash = undefined;
+    user.resetOtpExpiry = undefined;
+    await user.save();
+
+    // 6️⃣ Issue verified reset token
+    const verifiedToken = jwt.sign(
+      {
+        userId: user._id,
+        type: "password_reset_verified",
+      },
+      config.reset_scrt,
+      { expiresIn: "10m" }
+    );
+
+    return res.status(200).json({
+    
+      message: "OTP verified successfully",
+      verifiedToken,
+    });
+  } catch (error) {
+    console.error("Verify OTP error:", error);
+
+    return res.status(500).json({
+      message: "Internal server error",
+    });
   }
-
-  const user = await userModel.findById(payload.userId);
-
-  user.password = await bcrypt.hash(newPassword, 10);
-  user.resetOtpHash = undefined;
-  user.resetOtpExpiry = undefined;
-  await user.save();
-
-  res.clearCookie("reset_token").json({
-    message: "Password reset successful",
-  });
 };
 
+export const resetPassword = async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+    const { userId } = req.resetSession;
+
+    // 1️⃣ Validate input
+    if (!newPassword) {
+      return res.status(400).json({
+        message: "New password is required",
+      });
+    }
+
+    // 2️⃣ Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // 3️⃣ Update password
+    await userModel.findByIdAndUpdate(userId, {
+      password: hashedPassword,
+    });
+
+    return res.status(200).json({
+    
+      message: "Password reset successful",
+    });
+  } catch (error) {
+    console.error("Reset password error:", error);
+
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
 export const quickConnect = async (req, res) => {
   try {
     const { name, phone, email, message } = req.body;
