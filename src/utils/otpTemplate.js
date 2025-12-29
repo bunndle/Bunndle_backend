@@ -8,7 +8,7 @@ const otpTemplate = (otp) => `
     <div style="font-size:28px;font-weight:bold;letter-spacing:6px;margin:20px 0;">
       ${otp}
     </div>
-    <p style="color:#6b7280;">OTP valid for 5 minutes.</p>
+    <p style="color:#6b7280;">OTP valid for 10 minutes.</p>
   </div>
 </body>
 </html>

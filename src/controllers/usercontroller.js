@@ -469,7 +469,7 @@ export const verifyLoginOtp = async (req, res) => {
 
     if (!user.resetOtpHash || !user.resetOtpExpiry) {
       return res.status(400).json({
-        message: "OTP not requested or session expired",
+        message: "Invalid OTP or session expired",
       });
     }
 
