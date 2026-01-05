@@ -40,7 +40,7 @@ router.post(
 
 router.post("/connect",authMiddleware,quickConnect);
 
-router.post("/send-otp", sendLoginOtp);
+router.post("/send-mobile-otp", sendLoginOtp);
 router.post("/verify-mobile-otp", verifyLoginOtp);
 
 
