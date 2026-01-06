@@ -129,6 +129,73 @@ export async function loginUser(req, res) {
   }
 }
 
+export async function googleAuthCallback(req, res) {
+  try {
+    const googleUser = req.user;
+
+    const email = googleUser.emails[0].value;
+    const googleId = googleUser.id;
+    const name = `${googleUser.name.givenName} ${googleUser.name.familyName}`;
+
+    // 1️⃣ Find existing user
+    let user = await userModel.findOne({
+      $or: [{ email }, { googleId }],
+    });
+
+    // 2️⃣ LOGIN (existing user)
+    if (user) {
+      // 🔗 Link Google if user was created via normal signup
+      if (!user.googleId) {
+        user.googleId = googleId;
+        user.authProvider = "google";
+        await user.save();
+      }
+    }
+    // 3️⃣ SIGNUP (new Google user)
+    else {
+      user = await userModel.create({
+        name,
+        email,
+        googleId,
+        authProvider: "google",
+      });
+    }
+
+    // 4️⃣ Generate JWT
+    const token = jwt.sign(
+      {
+        id: user._id,
+        role: user.role,
+        email: user.email,
+      },
+      config.jwtSecret,
+      { expiresIn: "2d" }
+    );
+
+    // 5️⃣ Set cookie
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: false, // true in production
+      sameSite: "lax",
+    });
+
+    // 6️⃣ Redirect by role
+    
+    return res.status(200).json({
+      success: true,
+      message: "Login successful",
+      token,
+      user,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      message: "Google login failed",
+    });
+  }
+}
+
 export async function getUserProfile(req, res) {
   try {
     const token = req.headers.authorization.split(" ")[1];
@@ -261,7 +328,6 @@ export const forgotPassword = async (req, res) => {
 
     // 7️⃣ Respond (NO cookies)
     return res.status(200).json({
-    
       message: "OTP sent to registered email",
       resetToken, // Flutter stores this in memory
     });
@@ -274,6 +340,9 @@ export const forgotPassword = async (req, res) => {
     });
   }
 };
+
+
+
 
 export const verifyOtp = async (req, res) => {
   try {
@@ -330,7 +399,6 @@ export const verifyOtp = async (req, res) => {
     );
 
     return res.status(200).json({
-    
       message: "OTP verified successfully",
       verifiedToken,
     });
@@ -364,7 +432,6 @@ export const resetPassword = async (req, res) => {
     });
 
     return res.status(200).json({
-    
       message: "Password reset successful",
     });
   } catch (error) {

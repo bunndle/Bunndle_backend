@@ -10,7 +10,7 @@ const userSchema = new mongoose.Schema(
 
     phone: {
       type: String,
-      required: true,
+      
       unique: true, // ✅ must be unique
       index: true,
       trim: true,
@@ -27,7 +27,7 @@ const userSchema = new mongoose.Schema(
 
     password: {
       type: String,
-      required: true,
+  
       select: false, // 🔒 never return password by default
     },
     dob: {
@@ -55,3 +55,81 @@ const userSchema = new mongoose.Schema(
 
 const User = mongoose.model("User", userSchema);
 export default User;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// const userSchema = new mongoose.Schema(
+//   {
+//     name: {
+//       type: String,
+//       required: true,
+//       trim: true,
+//     },
+
+//     phone: {
+//       type: String,
+//       unique: true,
+//       sparse: true, // ✅ allows null for Google users
+//       trim: true,
+//     },
+
+//     email: {
+//       type: String,
+//       required: true,
+//       unique: true,
+//       lowercase: true,
+//       trim: true,
+//       index: true,
+//     },
+
+//     password: {
+//       type: String,
+//       select: false,
+//       required: function () {
+//         return this.authProvider === "local"; // ✅ required ONLY for normal signup
+//       },
+//     },
+
+//     // 🔐 AUTH PROVIDER
+//     authProvider: {
+//       type: String,
+//       enum: ["local", "google"],
+//       default: "local",
+//     },
+
+//     googleId: {
+//       type: String,
+//       index: true,
+//     },
+
+//     dob: Date,
+
+//     profileImage: String,
+//     profileImageId: String,
+
+//     resetOtpHash: {
+//       type: String,
+//       select: false,
+//     },
+
+//     resetOtpExpiry: Date,
+//   },
+//   { timestamps: true }
+// );
+
+// export default mongoose.model("User", userSchema);
