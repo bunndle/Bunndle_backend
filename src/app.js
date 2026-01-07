@@ -6,7 +6,7 @@ import cors from "cors"
 import passport from "passport"
 import { Strategy as GoogleStrategy } from 'passport-google-oauth2';
 import config from "./config/config.js"
-import userModel from './model/userModel.js'
+
 
 
 
