@@ -72,9 +72,87 @@ export const addWebAsset = async (req, res) => {
   }
 };
 
+// export const getAllWebAssets = async (req, res) => {
+//   try {
+//     const assets = await WebAsset.find().sort({ price: -1 });
+
+//     return res.status(200).json({
+//       success: true,
+//       message: "Web assets fetched successfully.",
+//       count: assets.length,
+//       data: assets,
+//     });
+//   } catch (error) {
+//     console.error("GET ALL WEB ASSETS ERROR:", error);
+
+//     return res.status(500).json({
+//       success: false,
+//       message: error.message || "Unable to fetch web assets.",
+//     });
+//   }
+// };
+
+
 export const getAllWebAssets = async (req, res) => {
   try {
-    const assets = await WebAsset.find().sort({ createdAt: -1 });
+    const assets = await WebAsset.aggregate([
+      {
+        $facet: {
+          fourWheelers: [
+            {
+              $match: {
+                category: "4-Wheeler",
+              },
+            },
+            {
+              $addFields: {
+                numericPrice: {
+                  $convert: {
+                    input: "$price",
+                    to: "double",
+                    onError: 0,
+                    onNull: 0,
+                  },
+                },
+              },
+            },
+            {
+              $sort: {
+                numericPrice: 1, // Lowest → Highest
+              },
+            },
+            {
+              $project: {
+                numericPrice: 0,
+              },
+            },
+          ],
+
+          otherAssets: [
+            {
+              $match: {
+                category: { $ne: "4-Wheeler" },
+              },
+            },
+          ],
+        },
+      },
+      {
+        $project: {
+          data: {
+            $concatArrays: ["$fourWheelers", "$otherAssets"],
+          },
+        },
+      },
+      {
+        $unwind: "$data",
+      },
+      {
+        $replaceRoot: {
+          newRoot: "$data",
+        },
+      },
+    ]);
 
     return res.status(200).json({
       success: true,
@@ -91,8 +169,6 @@ export const getAllWebAssets = async (req, res) => {
     });
   }
 };
-
-
 
 export const updateWebAsset = async (req, res) => {
       let uploadedFiles = [];
